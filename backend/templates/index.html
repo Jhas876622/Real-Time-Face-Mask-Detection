@@ -252,7 +252,6 @@ async function detect() {
 
         let data;
         try {
-            // ✅ FIX: Relative URL — works on Render, local, everywhere
             const res = await fetch("/predict", {
                 method: "POST", body: form
             });
@@ -265,8 +264,25 @@ async function detect() {
             return;
         }
 
-        const isMask = data.mask > data.no_mask;
-        const conf   = Math.max(data.mask, data.no_mask) * 100;
+        // ✅ FIX: Handle the correct API response structure
+        // Backend returns: {"faces": [{"mask": 0.95, "no_mask": 0.05, "box": [...]}]}
+        let maskScore = 0, noMaskScore = 0;
+        
+        if (data.faces && data.faces.length > 0) {
+            // Use the first face result from backend
+            maskScore = data.faces[0].mask;
+            noMaskScore = data.faces[0].no_mask;
+        } else if (data.mask !== undefined) {
+            // Fallback if backend returns flat structure
+            maskScore = data.mask;
+            noMaskScore = data.no_mask;
+        } else {
+            addLog("⚠️ No face data in response", "info");
+            continue;
+        }
+
+        const isMask = maskScore > noMaskScore;
+        const conf   = Math.max(maskScore, noMaskScore) * 100;
         const label  = isMask ? "Mask ✓" : "No Mask ✗";
         const color  = isMask ? "#00ff88" : "#ff2d55";
 
