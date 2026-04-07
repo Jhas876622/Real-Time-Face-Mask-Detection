@@ -11,11 +11,10 @@ CORS(app)
 BASE = os.path.dirname(__file__)
 
 # Load model with custom object scope to fix batch_shape error
-with tf.keras.utils.custom_object_scope({}):
-    model = tf.keras.models.load_model(
-        os.path.join(BASE, "model", "mask_detector.h5"),
-        compile=False
-    )
+model = tf.keras.models.load_model(
+    os.path.join(BASE, "model", "mask_detector_new"),
+    compile=False
+)
 
 faceNet = cv2.dnn.readNet(
     os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel"),
