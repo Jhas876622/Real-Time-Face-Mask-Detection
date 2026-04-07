@@ -12,7 +12,7 @@ BASE = os.path.dirname(__file__)
 
 # Load model with custom object scope to fix batch_shape error
 model = tf.keras.models.load_model(
-    os.path.join(BASE, "model", "mask_detector_new"),
+    os.path.join(BASE, "model", "mask_detector_new.h5"),
     compile=False
 )
 
