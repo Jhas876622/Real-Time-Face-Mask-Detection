@@ -12,22 +12,26 @@ CORS(app)
 
 BASE = os.path.dirname(__file__)
 
-# Model ko baad mein load karenge (lazy loading)
+# Lazy loading - model pehli request pe load hoga
 model = None
 faceNet = None
 
 def load_models():
     global model, faceNet
     if model is None:
+        print("Loading mask detector model...")
         model = tf.keras.models.load_model(
             os.path.join(BASE, "model", "mask_detector_new.h5"),
             compile=False
         )
+        print("Mask detector loaded!")
     if faceNet is None:
+        print("Loading face detector...")
         faceNet = cv2.dnn.readNet(
             os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel"),
             os.path.join(BASE, "face_detector", "deploy.prototxt")
         )
+        print("Face detector loaded!")
 
 @app.route("/")
 def home():
@@ -35,7 +39,7 @@ def home():
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    load_models()  # Pehli request pe load hoga
+    load_models()
     
     if "image" not in request.files:
         return jsonify({"error": "No image provided"}), 400
