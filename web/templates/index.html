@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Mask Detection</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg:      #050a0f;
+            --surface: #0b1622;
+            --border:  #1a3a5c;
+            --accent:  #00e5ff;
+            --safe:    #00ff88;
+            --danger:  #ff2d55;
+            --text:    #c8dff0;
+            --muted:   #4a6a80;
+            --mono:    'Share Tech Mono', monospace;
+            --ui:      'Rajdhani', sans-serif;
+        }
+        body { background:var(--bg); color:var(--text); font-family:var(--ui); min-height:100vh; }
+        header {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:14px 32px; border-bottom:1px solid var(--border);
+            background:rgba(11,22,34,0.97); position:sticky; top:0; z-index:100;
+        }
+        .logo { font-family:var(--mono); font-size:1.2rem; letter-spacing:0.1em; }
+        .logo .accent { color:var(--accent); }
+        .logo-bracket { color:var(--muted); }
+        .badge {
+            font-family:var(--mono); font-size:0.75rem; padding:4px 12px;
+            border-radius:2px; border:1px solid var(--border); color:#ffb800;
+            animation:blink 1.2s step-end infinite;
+        }
+        .badge.ready { color:var(--safe); animation:none; border-color:var(--safe); }
+        @keyframes blink { 50%{opacity:0;} }
+        main { max-width:960px; margin:0 auto; padding:32px 20px 60px; display:flex; flex-direction:column; gap:24px; }
+        .feed-wrapper { display:flex; justify-content:center; }
+        .camera-container {
+            position:relative; display:inline-block;
+            border:1px solid var(--border); border-radius:4px; overflow:hidden;
+            box-shadow:0 0 40px rgba(0,229,255,0.08);
+        }
+        video { display:block; width:100%; max-width:640px; border-radius:4px; }
+        canvas { position:absolute; top:0; left:0; width:100%; height:100%; border-radius:4px; }
+        .corner { position:absolute; width:18px; height:18px; border-color:var(--accent); border-style:solid; z-index:10; pointer-events:none; }
+        .corner.tl { top:8px; left:8px; border-width:2px 0 0 2px; }
+        .corner.tr { top:8px; right:8px; border-width:2px 2px 0 0; }
+        .corner.bl { bottom:8px; left:8px; border-width:0 0 2px 2px; }
+        .corner.br { bottom:8px; right:8px; border-width:0 2px 2px 0; }
+        .feed-label {
+            position:absolute; top:10px; left:50%; transform:translateX(-50%);
+            font-family:var(--mono); font-size:0.65rem; color:var(--muted);
+            letter-spacing:0.2em; z-index:10; pointer-events:none;
+        }
+        .info-panel { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+        .stat-card {
+            background:var(--surface); border:1px solid var(--border);
+            border-radius:4px; padding:14px 16px; text-align:center; transition:all 0.3s;
+        }
+        .stat-card.alert { border-color:var(--danger); box-shadow:0 0 16px rgba(255,45,85,0.3); }
+        .stat-card.safe  { border-color:var(--safe);   box-shadow:0 0 16px rgba(0,255,136,0.15); }
+        .stat-label { font-family:var(--mono); font-size:0.65rem; color:var(--muted); letter-spacing:0.15em; margin-bottom:6px; }
+        .stat-value { font-family:var(--mono); font-size:1.3rem; font-weight:600; color:var(--accent); transition:color 0.3s; }
+        .stat-value.danger { color:var(--danger); }
+        .stat-value.safe   { color:var(--safe); }
+        .log-panel { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:16px; max-height:180px; overflow-y:auto; }
+        .log-header { font-family:var(--mono); font-size:0.7rem; color:var(--muted); letter-spacing:0.1em; margin-bottom:10px; }
+        .log-entry { font-family:var(--mono); font-size:0.75rem; padding:3px 0; border-bottom:1px solid rgba(26,58,92,0.4); opacity:0; animation:fadeIn 0.3s forwards; }
+        .log-entry.safe   { color:var(--safe); }
+        .log-entry.danger { color:var(--danger); }
+        .log-entry.info   { color:var(--muted); }
+        @keyframes fadeIn { to{opacity:1;} }
+        @media(max-width:600px){ .info-panel{grid-template-columns:repeat(2,1fr);} }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo"><span class="logo-bracket">[</span>AI<span class="accent">MASK</span>DETECT<span class="logo-bracket">]</span></div>
+    <span class="badge" id="model-status">● LOADING</span>
+</header>
+
+<main>
+    <div class="feed-wrapper">
+        <div class="camera-container">
+            <div class="corner tl"></div><div class="corner tr"></div>
+            <div class="corner bl"></div><div class="corner br"></div>
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="canvas"></canvas>
+            <div class="feed-label">LIVE FEED</div>
+        </div>
+    </div>
+    <div class="info-panel">
+        <div class="stat-card" id="status-card">
+            <div class="stat-label">STATUS</div>
+            <div class="stat-value" id="status">INITIALIZING</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">FPS</div>
+            <div class="stat-value" id="fps">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">FACES</div>
+            <div class="stat-value" id="face-count">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">MASK CONF</div>
+            <div class="stat-value" id="confidence">--%</div>
+        </div>
+    </div>
+    <div class="log-panel">
+        <div class="log-header">// DETECTION LOG</div>
+        <div id="log-entries"></div>
+    </div>
+</main>
+
+<script>
+const video      = document.getElementById("video");
+const canvas     = document.getElementById("canvas");
+const statusText = document.getElementById("status");
+const fpsText    = document.getElementById("fps");
+const faceCount  = document.getElementById("face-count");
+const confText   = document.getElementById("confidence");
+const statusCard = document.getElementById("status-card");
+const modelBadge = document.getElementById("model-status");
+const logDiv     = document.getElementById("log-entries");
+
+const alertSound = new Audio("/static/alert.mp3")
+alertSound.preload = "auto";
+let lastAlertTime = 0, lastSpokenTime = 0;
+
+function speakAlert() {
+    window.speechSynthesis.speak(
+        new SpeechSynthesisUtterance("Please wear your mask")
+    );
+}
+
+function addLog(msg, type = "info") {
+    const el = document.createElement("div");
+    el.className = `log-entry ${type}`;
+    const t = new Date().toLocaleTimeString("en-GB", { hour12: false });
+    el.textContent = `[${t}]  ${msg}`;
+    logDiv.prepend(el);
+    while (logDiv.children.length > 40) logDiv.removeChild(logDiv.lastChild);
+}
+
+function setStatus(text, type) {
+    statusText.textContent = text;
+    statusText.className = "stat-value " + (type === "danger" ? "danger" : type === "safe" ? "safe" : "");
+    statusCard.className  = "stat-card "  + (type === "danger" ? "alert"  : type === "safe" ? "safe"  : "");
+}
+
+// ── Camera ──────────────────────────────────────────────────
+async function startCamera() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480, facingMode: "user" }
+        });
+        video.srcObject = stream;
+        addLog("✅ Camera initialised", "info");
+    } catch(e) {
+        addLog("❌ Camera error: " + e.message, "danger");
+        setStatus("CAM ERROR", "danger");
+        throw e;
+    }
+}
+
+// ── Load Models ─────────────────────────────────────────────
+const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+
+async function loadModels() {
+    addLog("Loading face models...", "info");
+    try {
+        await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+            faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
+        ]);
+        addLog("✅ Models loaded: TinyFace + SSD", "safe");
+        modelBadge.textContent = "● READY";
+        modelBadge.classList.add("ready");
+    } catch(e) {
+        addLog("❌ Model error: " + e.message, "danger");
+        throw e;
+    }
+}
+
+// ── Detection ───────────────────────────────────────────────
+let detecting = false;
+
+const TINY_OPTS = new faceapi.TinyFaceDetectorOptions({
+    inputSize: 320,
+    scoreThreshold: 0.25
+});
+
+const SSD_OPTS = new faceapi.SsdMobilenetv1Options({
+    minConfidence: 0.2
+});
+
+async function detect() {
+    if (detecting) return;
+    if (!video.videoWidth || video.readyState < 2) return;
+    detecting = true;
+
+    const ctx = canvas.getContext("2d");
+    if (canvas.width  !== video.videoWidth)  canvas.width  = video.videoWidth;
+    if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let detections = [];
+    try {
+        detections = await faceapi.detectAllFaces(video, TINY_OPTS);
+        if (detections.length === 0) {
+            detections = await faceapi.detectAllFaces(video, SSD_OPTS);
+            if (detections.length > 0) addLog("SSD fallback detected " + detections.length + " face(s)", "info");
+        }
+    } catch(e) {
+        detecting = false;
+        return;
+    }
+
+    faceCount.textContent = detections.length;
+
+    if (detections.length === 0) {
+        setStatus("NO FACE", "neutral");
+        detecting = false;
+        return;
+    }
+
+    let anyNoMask = false, bestConf = 0;
+
+    for (const det of detections) {
+        const box = det.box || det.detection?.box;
+        if (!box) continue;
+
+        const x = Math.max(0, Math.floor(box.x));
+        const y = Math.max(0, Math.floor(box.y));
+        const w = Math.min(Math.floor(box.width),  canvas.width  - x);
+        const h = Math.min(Math.floor(box.height), canvas.height - y);
+        if (w < 10 || h < 10) continue;
+
+        const tmp = document.createElement("canvas");
+        tmp.width = 224; tmp.height = 224;
+        tmp.getContext("2d").drawImage(video, x, y, w, h, 0, 0, 224, 224);
+
+        const blob = await new Promise(r => tmp.toBlob(r, "image/jpeg", 0.92));
+        const form = new FormData();
+        form.append("image", blob);
+
+        let data;
+        try {
+            // ✅ FIX: Relative URL — works on Render, local, everywhere
+            const res = await fetch("/predict", {
+                method: "POST", body: form
+            });
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            data = await res.json();
+        } catch(e) {
+            addLog("❌ API error: " + e.message, "danger");
+            setStatus("SERVER ERROR", "neutral");
+            detecting = false;
+            return;
+        }
+
+        const isMask = data.mask > data.no_mask;
+        const conf   = Math.max(data.mask, data.no_mask) * 100;
+        const label  = isMask ? "Mask ✓" : "No Mask ✗";
+        const color  = isMask ? "#00ff88" : "#ff2d55";
+
+        if (conf > bestConf) bestConf = conf;
+        if (!isMask) anyNoMask = true;
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = 3;
+        ctx.strokeRect(x, y, w, h);
+
+        ctx.font = "bold 14px monospace";
+        const labelText = `${label}  ${conf.toFixed(1)}%`;
+        const tw = ctx.measureText(labelText).width;
+        ctx.fillStyle = color + "dd";
+        ctx.fillRect(x, y - 26, tw + 12, 24);
+        ctx.fillStyle = "#000";
+        ctx.fillText(labelText, x + 6, y - 8);
+    }
+
+    confText.textContent = bestConf.toFixed(1) + "%";
+
+    if (anyNoMask) {
+        setStatus("ALERT ⚠️", "danger");
+        const now = Date.now();
+        if (now - lastAlertTime  > 2000) { alertSound.play().catch(()=>{}); lastAlertTime = now; }
+        if (now - lastSpokenTime > 3500) { speakAlert(); lastSpokenTime = now; addLog("🚨 No mask detected!", "danger"); }
+    } else {
+        setStatus("SAFE ✓", "safe");
+    }
+
+    detecting = false;
+}
+
+// ── Main ────────────────────────────────────────────────────
+async function main() {
+    addLog("System starting...", "info");
+    await startCamera();
+    await loadModels();
+
+    document.body.addEventListener("click", () => {
+        alertSound.play().catch(()=>{}); alertSound.pause(); alertSound.currentTime = 0;
+    }, { once: true });
+
+    let lastSec = performance.now(), frames = 0;
+    addLog("Detection loop started", "info");
+
+    async function loop() {
+        frames++;
+        const now = performance.now();
+        if (now - lastSec >= 1000) {
+            fpsText.textContent = frames;
+            frames = 0; lastSec = now;
+        }
+        await detect();
+        setTimeout(() => requestAnimationFrame(loop), 150);
+    }
+
+    if (video.readyState >= 2) {
+        addLog("Video ready — starting detection", "info");
+        loop();
+    } else {
+        video.addEventListener("loadeddata", () => {
+            addLog("Video stream active — starting detection", "info");
+            loop();
+        });
+    }
+}
+
+main();
+</script>
+</body>
+</html>
