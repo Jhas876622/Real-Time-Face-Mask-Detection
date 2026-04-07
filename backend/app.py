@@ -1,5 +1,6 @@
 import os
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
+
 import tensorflow as tf
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
@@ -11,16 +12,22 @@ CORS(app)
 
 BASE = os.path.dirname(__file__)
 
-# Load model with custom object scope to fix batch_shape error
-model = tf.keras.models.load_model(
-    os.path.join(BASE, "model", "mask_detector_new.h5"),
-    compile=False
-)
+# Model ko baad mein load karenge (lazy loading)
+model = None
+faceNet = None
 
-faceNet = cv2.dnn.readNet(
-    os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel"),
-    os.path.join(BASE, "face_detector", "deploy.prototxt")
-)
+def load_models():
+    global model, faceNet
+    if model is None:
+        model = tf.keras.models.load_model(
+            os.path.join(BASE, "model", "mask_detector_new.h5"),
+            compile=False
+        )
+    if faceNet is None:
+        faceNet = cv2.dnn.readNet(
+            os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel"),
+            os.path.join(BASE, "face_detector", "deploy.prototxt")
+        )
 
 @app.route("/")
 def home():
@@ -28,6 +35,8 @@ def home():
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    load_models()  # Pehli request pe load hoga
+    
     if "image" not in request.files:
         return jsonify({"error": "No image provided"}), 400
 
