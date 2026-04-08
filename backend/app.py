@@ -11,7 +11,6 @@ CORS(app)
 
 BASE = os.path.dirname(__file__)
 
-# Lazy loading
 model = None
 faceNet = None
 
@@ -19,21 +18,34 @@ def load_models():
     global model, faceNet
     try:
         if model is None:
-            print("Loading mask detector model...")
-            model_path = os.path.join(BASE, "model", "mask_detector_final.keras")
-            print(f"Model path: {model_path}")
-            print(f"Model exists: {os.path.exists(model_path)}")
-            model = tf.keras.models.load_model(model_path, compile=False)
-            print("Mask detector loaded!")
+            print("Building model architecture...")
+            base_model = tf.keras.applications.MobileNetV2(
+                input_shape=(224, 224, 3),
+                include_top=False,
+                weights=None
+            )
+            x = base_model.output
+            x = tf.keras.layers.AveragePooling2D(pool_size=(7, 7))(x)
+            x = tf.keras.layers.Flatten()(x)
+            x = tf.keras.layers.Dense(128, activation="relu")(x)
+            x = tf.keras.layers.Dropout(0.5)(x)
+            x = tf.keras.layers.Dense(2, activation="softmax")(x)
+            model = tf.keras.Model(inputs=base_model.input, outputs=x)
+
+            weights_path = os.path.join(BASE, "model", "mask_weights.weights.h5")
+            print(f"Weights path: {weights_path}")
+            print(f"Weights exist: {os.path.exists(weights_path)}")
+            model.load_weights(weights_path)
+            print("Model ready!")
+
         if faceNet is None:
-            print("Loading face detector...")
             proto_path = os.path.join(BASE, "face_detector", "deploy.prototxt")
             caffe_path = os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel")
-            print(f"Proto exists: {os.path.exists(proto_path)}")
-            print(f"Caffe model exists: {os.path.exists(caffe_path)}")
             faceNet = cv2.dnn.readNet(caffe_path, proto_path)
             print("Face detector loaded!")
+
         return True
+
     except Exception as e:
         print(f"Error loading models: {str(e)}")
         print(traceback.format_exc())
@@ -100,17 +112,12 @@ def health():
 
 @app.route("/debug")
 def debug():
-    model_path = os.path.join(BASE, "model", "mask_detector_final.keras")
-    proto_path = os.path.join(BASE, "face_detector", "deploy.prototxt")
-    caffe_path = os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel")
-
+    weights_path = os.path.join(BASE, "model", "mask_weights.weights.h5")
     return jsonify({
         "base_dir": BASE,
-        "model_exists": os.path.exists(model_path),
-        "proto_exists": os.path.exists(proto_path),
-        "caffe_exists": os.path.exists(caffe_path),
-        "all_files": os.listdir(BASE),
-        "model_files": os.listdir(os.path.join(BASE, "model"))
+        "weights_exist": os.path.exists(weights_path),
+        "model_files": os.listdir(os.path.join(BASE, "model")),
+        "all_files": os.listdir(BASE)
     })
 
 if __name__ == "__main__":
