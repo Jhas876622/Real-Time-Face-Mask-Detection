@@ -18,36 +18,30 @@ def load_models():
     global model, faceNet
     try:
         if model is None:
-            print("Building model architecture...")
-            base_model = tf.keras.applications.MobileNetV2(
-                input_shape=(224, 224, 3),
-                include_top=False,
-                weights=None
-            )
-            x = base_model.output
-            x = tf.keras.layers.AveragePooling2D(pool_size=(7, 7))(x)
-            x = tf.keras.layers.Flatten()(x)
-            x = tf.keras.layers.Dense(128, activation="relu")(x)
-            x = tf.keras.layers.Dropout(0.5)(x)
-            x = tf.keras.layers.Dense(2, activation="softmax")(x)
-            model = tf.keras.Model(inputs=base_model.input, outputs=x)
-
-            weights_path = os.path.join(BASE, "model", "mask_weights.weights.h5")
-            print(f"Weights path: {weights_path}")
-            print(f"Weights exist: {os.path.exists(weights_path)}")
-            model.load_weights(weights_path)
-            print("Model ready!")
+            import h5py
+            model_path = os.path.join(BASE, "model", "mask_detector.h5")
+            
+            # Patch the h5 file to fix batch_shape issue
+            with h5py.File(model_path, 'r+') as f:
+                model_config = f.attrs.get('model_config')
+                if isinstance(model_config, bytes):
+                    model_config = model_config.decode('utf-8')
+                model_config = model_config.replace(
+                    '"batch_shape"', '"batch_input_shape"'
+                )
+                f.attrs['model_config'] = model_config.encode('utf-8')
+            
+            model = tf.keras.models.load_model(model_path, compile=False)
+            print("Original model loaded successfully!")
 
         if faceNet is None:
             proto_path = os.path.join(BASE, "face_detector", "deploy.prototxt")
             caffe_path = os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel")
             faceNet = cv2.dnn.readNet(caffe_path, proto_path)
             print("Face detector loaded!")
-
         return True
-
     except Exception as e:
-        print(f"Error loading models: {str(e)}")
+        print(f"Error: {str(e)}")
         print(traceback.format_exc())
         return False
 
