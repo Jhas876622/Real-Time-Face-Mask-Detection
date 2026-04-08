@@ -1,5 +1,6 @@
 import os
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
+os.environ['TF_KERAS'] = '1'
 
 import tensorflow as tf
 from flask import Flask, request, jsonify, render_template
