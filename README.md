@@ -1,4 +1,4 @@
-# 😷 Real-Time Face Mask Detection System (Industry + IEEE Level)
+# 😷 Real-Time Face Mask Detection System
 
 ![Accuracy](https://img.shields.io/badge/Accuracy-96%25-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue)
