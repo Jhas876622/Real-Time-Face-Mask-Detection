@@ -23,7 +23,7 @@ def load_models():
     try:
         if model is None:
             print("Loading mask detector model...")
-            model_path = os.path.join(BASE, "model", "mask_detector_v2.h5")
+            model_path = os.path.join(BASE, "model", "mask_detector_final.keras")
             print(f"Model path: {model_path}")
             print(f"Model exists: {os.path.exists(model_path)}")
             model = tf.keras.models.load_model(model_path, compile=False)
@@ -103,7 +103,7 @@ def health():
 
 @app.route("/debug")
 def debug():
-    model_path = os.path.join(BASE, "model", "mask_detector_v2.h5")
+    model_path = os.path.join(BASE, "model", "mask_detector_final.keras")
     proto_path = os.path.join(BASE, "face_detector", "deploy.prototxt")
     caffe_path = os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel")
 
@@ -112,7 +112,8 @@ def debug():
         "model_exists": os.path.exists(model_path),
         "proto_exists": os.path.exists(proto_path),
         "caffe_exists": os.path.exists(caffe_path),
-        "all_files": os.listdir(BASE)
+        "all_files": os.listdir(BASE),
+        "model_files": os.listdir(os.path.join(BASE, "model"))
     })
 
 if __name__ == "__main__":
