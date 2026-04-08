@@ -384,12 +384,6 @@ This project demonstrates a complete end-to-end deployment of a deep learning-ba
 
 ---
 
-## 📜 License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
----
-
 <div align="center">
 
 **Made with ❤️ | Deployed Live at [real-time-face-mask-detection.onrender.com](https://real-time-face-mask-detection.onrender.com/)**
