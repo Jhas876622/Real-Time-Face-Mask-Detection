@@ -18,30 +18,21 @@ def load_models():
     global model, faceNet
     try:
         if model is None:
-            import h5py
-            model_path = os.path.join(BASE, "model", "mask_detector.h5")
-            
-            # Patch the h5 file to fix batch_shape issue
-            with h5py.File(model_path, 'r+') as f:
-                model_config = f.attrs.get('model_config')
-                if isinstance(model_config, bytes):
-                    model_config = model_config.decode('utf-8')
-                model_config = model_config.replace(
-                    '"batch_shape"', '"batch_input_shape"'
-                )
-                f.attrs['model_config'] = model_config.encode('utf-8')
-            
+            model_path = os.path.join(BASE, "model", "mask_detector_final.keras")
+            print(f"Model exists: {os.path.exists(model_path)}")
             model = tf.keras.models.load_model(model_path, compile=False)
-            print("Original model loaded successfully!")
+            print("Model loaded!")
 
         if faceNet is None:
             proto_path = os.path.join(BASE, "face_detector", "deploy.prototxt")
             caffe_path = os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel")
             faceNet = cv2.dnn.readNet(caffe_path, proto_path)
             print("Face detector loaded!")
+
         return True
+
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error loading models: {str(e)}")
         print(traceback.format_exc())
         return False
 
@@ -106,10 +97,10 @@ def health():
 
 @app.route("/debug")
 def debug():
-    weights_path = os.path.join(BASE, "model", "mask_weights.weights.h5")
+    model_path = os.path.join(BASE, "model", "mask_detector_final.keras")
     return jsonify({
         "base_dir": BASE,
-        "weights_exist": os.path.exists(weights_path),
+        "model_exists": os.path.exists(model_path),
         "model_files": os.listdir(os.path.join(BASE, "model")),
         "all_files": os.listdir(BASE)
     })
