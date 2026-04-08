@@ -6,7 +6,6 @@
     <title>AI Mask Detection</title>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
@@ -36,6 +35,7 @@
             animation:blink 1.2s step-end infinite;
         }
         .badge.ready { color:var(--safe); animation:none; border-color:var(--safe); }
+        .badge.error { color:var(--danger); animation:none; border-color:var(--danger); }
         @keyframes blink { 50%{opacity:0;} }
         main { max-width:960px; margin:0 auto; padding:32px 20px 60px; display:flex; flex-direction:column; gap:24px; }
         .feed-wrapper { display:flex; justify-content:center; }
@@ -73,6 +73,12 @@
         .log-entry.safe   { color:var(--safe); }
         .log-entry.danger { color:var(--danger); }
         .log-entry.info   { color:var(--muted); }
+        .server-banner {
+            display:none; background:rgba(255,45,85,0.1); border:1px solid var(--danger);
+            border-radius:4px; padding:10px 16px; font-family:var(--mono); font-size:0.75rem;
+            color:var(--danger); text-align:center;
+        }
+        .server-banner.show { display:block; }
         @keyframes fadeIn { to{opacity:1;} }
         @media(max-width:600px){ .info-panel{grid-template-columns:repeat(2,1fr);} }
     </style>
@@ -85,6 +91,9 @@
 </header>
 
 <main>
+    <div class="server-banner" id="server-banner">
+        ⚠ Server warming up — first request takes 30–60 seconds on free tier. Please wait...
+    </div>
     <div class="feed-wrapper">
         <div class="camera-container">
             <div class="corner tl"></div><div class="corner tr"></div>
@@ -128,15 +137,30 @@ const confText   = document.getElementById("confidence");
 const statusCard = document.getElementById("status-card");
 const modelBadge = document.getElementById("model-status");
 const logDiv     = document.getElementById("log-entries");
+const serverBanner = document.getElementById("server-banner");
 
-const alertSound = new Audio("/static/alert.mp3")
-alertSound.preload = "auto";
 let lastAlertTime = 0, lastSpokenTime = 0;
+let serverErrorCount = 0;
+let isServerWarm = false;
+
+// Ping server on load to warm it up
+async function warmupServer() {
+    try {
+        addLog("Warming up server...", "info");
+        serverBanner.classList.add("show");
+        const res = await fetch("/health", { method: "GET" });
+        if (res.ok) {
+            isServerWarm = true;
+            serverBanner.classList.remove("show");
+            addLog("✅ Server is ready", "safe");
+        }
+    } catch(e) {
+        addLog("⚠ Server warming up, please wait...", "info");
+    }
+}
 
 function speakAlert() {
-    window.speechSynthesis.speak(
-        new SpeechSynthesisUtterance("Please wear your mask")
-    );
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance("Please wear your mask"));
 }
 
 function addLog(msg, type = "info") {
@@ -154,7 +178,6 @@ function setStatus(text, type) {
     statusCard.className  = "stat-card "  + (type === "danger" ? "alert"  : type === "safe" ? "safe"  : "");
 }
 
-// ── Camera ──────────────────────────────────────────────────
 async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -169,9 +192,7 @@ async function startCamera() {
     }
 }
 
-// ── Load Models ─────────────────────────────────────────────
 const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
-
 async function loadModels() {
     addLog("Loading face models...", "info");
     try {
@@ -188,17 +209,9 @@ async function loadModels() {
     }
 }
 
-// ── Detection ───────────────────────────────────────────────
 let detecting = false;
-
-const TINY_OPTS = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 320,
-    scoreThreshold: 0.25
-});
-
-const SSD_OPTS = new faceapi.SsdMobilenetv1Options({
-    minConfidence: 0.2
-});
+const TINY_OPTS = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.25 });
+const SSD_OPTS  = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.2 });
 
 async function detect() {
     if (detecting) return;
@@ -215,7 +228,6 @@ async function detect() {
         detections = await faceapi.detectAllFaces(video, TINY_OPTS);
         if (detections.length === 0) {
             detections = await faceapi.detectAllFaces(video, SSD_OPTS);
-            if (detections.length > 0) addLog("SSD fallback detected " + detections.length + " face(s)", "info");
         }
     } catch(e) {
         detecting = false;
@@ -252,36 +264,36 @@ async function detect() {
 
         let data;
         try {
-            const res = await fetch("/predict", {
-                method: "POST", body: form
-            });
+            const res = await fetch("/predict", { method: "POST", body: form });
             if (!res.ok) throw new Error("HTTP " + res.status);
             data = await res.json();
+            serverErrorCount = 0;
+            if (!isServerWarm) {
+                isServerWarm = true;
+                serverBanner.classList.remove("show");
+            }
         } catch(e) {
-            addLog("❌ API error: " + e.message, "danger");
-            setStatus("SERVER ERROR", "neutral");
+            serverErrorCount++;
+            if (serverErrorCount >= 3) {
+                serverBanner.classList.add("show");
+                addLog("⚠ Server sleeping — retrying...", "info");
+                setStatus("WARMING UP", "neutral");
+            }
             detecting = false;
             return;
         }
 
-        // ✅ FIX: Handle the correct API response structure
-        // Backend returns: {"faces": [{"mask": 0.95, "no_mask": 0.05, "box": [...]}]}
         let maskScore = 0, noMaskScore = 0;
-        
         if (data.faces && data.faces.length > 0) {
-            // Use the first face result from backend
-            maskScore = data.faces[0].mask;
+            maskScore   = data.faces[0].mask;
             noMaskScore = data.faces[0].no_mask;
-        } else if (data.mask !== undefined) {
-            // Fallback if backend returns flat structure
-            maskScore = data.mask;
-            noMaskScore = data.no_mask;
         } else {
-            addLog("⚠️ No face data in response", "info");
-            continue;
+            detecting = false;
+            return;
         }
 
-        const isMask = maskScore > noMaskScore;
+        // ✅ FIX: Lower threshold so mask is detected correctly
+        const isMask = maskScore > 0.4;
         const conf   = Math.max(maskScore, noMaskScore) * 100;
         const label  = isMask ? "Mask ✓" : "No Mask ✗";
         const color  = isMask ? "#00ff88" : "#ff2d55";
@@ -307,7 +319,7 @@ async function detect() {
     if (anyNoMask) {
         setStatus("ALERT ⚠️", "danger");
         const now = Date.now();
-        if (now - lastAlertTime  > 2000) { alertSound.play().catch(()=>{}); lastAlertTime = now; }
+        if (now - lastAlertTime  > 2000) { lastAlertTime = now; }
         if (now - lastSpokenTime > 3500) { speakAlert(); lastSpokenTime = now; addLog("🚨 No mask detected!", "danger"); }
     } else {
         setStatus("SAFE ✓", "safe");
@@ -316,15 +328,10 @@ async function detect() {
     detecting = false;
 }
 
-// ── Main ────────────────────────────────────────────────────
 async function main() {
     addLog("System starting...", "info");
     await startCamera();
-    await loadModels();
-
-    document.body.addEventListener("click", () => {
-        alertSound.play().catch(()=>{}); alertSound.pause(); alertSound.currentTime = 0;
-    }, { once: true });
+    await Promise.all([loadModels(), warmupServer()]);
 
     let lastSec = performance.now(), frames = 0;
     addLog("Detection loop started", "info");
@@ -337,7 +344,8 @@ async function main() {
             frames = 0; lastSec = now;
         }
         await detect();
-        setTimeout(() => requestAnimationFrame(loop), 150);
+        // ✅ FIX: Slower loop = less server load = no crash
+        setTimeout(() => requestAnimationFrame(loop), 400);
     }
 
     if (video.readyState >= 2) {
@@ -354,4 +362,4 @@ async function main() {
 main();
 </script>
 </body>
-</html>                                                                                                                 
+</html>
