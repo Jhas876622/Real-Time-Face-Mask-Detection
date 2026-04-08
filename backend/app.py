@@ -22,7 +22,7 @@ def load_models():
     try:
         if model is None:
             print("Loading mask detector model...")
-            model_path = os.path.join(BASE, "model", "mask_detector_new.h5")
+            model_path = os.path.join(BASE, "model", "mask_detector_v2.h5")
             print(f"Model path: {model_path}")
             print(f"Model exists: {os.path.exists(model_path)}")
             model = tf.keras.models.load_model(model_path, compile=False)
@@ -50,7 +50,7 @@ def predict():
     try:
         if not load_models():
             return jsonify({"error": "Model loading failed"}), 500
-        
+
         if "image" not in request.files:
             return jsonify({"error": "No image provided"}), 400
 
@@ -90,7 +90,7 @@ def predict():
                 })
 
         return jsonify({"faces": results})
-    
+
     except Exception as e:
         print(f"Prediction error: {str(e)}")
         print(traceback.format_exc())
@@ -102,10 +102,10 @@ def health():
 
 @app.route("/debug")
 def debug():
-    model_path = os.path.join(BASE, "model", "mask_detector_new.h5")
+    model_path = os.path.join(BASE, "model", "mask_detector_v2.h5")
     proto_path = os.path.join(BASE, "face_detector", "deploy.prototxt")
     caffe_path = os.path.join(BASE, "face_detector", "res10_300x300_ssd_iter_140000.caffemodel")
-    
+
     return jsonify({
         "base_dir": BASE,
         "model_exists": os.path.exists(model_path),
